@@ -98,8 +98,13 @@ def run_with_loading(message: str, func: Callable, *args, **kwargs) -> Optional[
         safe_print(f"    {RED}✗ Error during {message.lower()}: {str(e)}{RESET}")
         return False
 
-def get_senders_to_process(service) -> List[Dict[str, Any]]:
-    """Helper function to get senders from promotional emails."""
+def get_senders_to_process(service) -> Dict[int, str]:
+    """
+    Helper function to get senders from promotional emails.
+    
+    Returns:
+        Dictionary mapping sequence numbers to sender email addresses
+    """
     safe_print(f"\n    {BLUE}Fetching promotional emails...{RESET}")
     promo_emails = fetch_promotional_emails(
         service, 
@@ -109,7 +114,7 @@ def get_senders_to_process(service) -> List[Dict[str, Any]]:
     
     if not promo_emails:
         safe_print(f"\n    {YELLOW}No promotional emails found.{RESET}")
-        return []
+        return [] 
     
     safe_print(f"\n    {BLUE}Select senders to process:{RESET}")
     selected_senders = preview_emails_with_sequence(promo_emails)
@@ -120,7 +125,7 @@ def get_senders_to_process(service) -> List[Dict[str, Any]]:
     
     return selected_senders
 
-def main():
+def cli_main():
     """Main function to run the CLI menu."""
     # Initialize Gmail service
     try:
@@ -140,11 +145,10 @@ def main():
         if choice == "1":  # Only Unsubscribe
             clear_screen()
             safe_print("\n    {BLUE}=== UNSUBSCRIBE ONLY ==={RESET}\n")
-            selected_emails = get_senders_to_process(service)
-            if selected_emails:
-                senders = [email['sender_email'] for email in selected_emails]
+            selected_senders = get_senders_to_process(service)
+            if selected_senders:
                 # For each sender, we need to fetch emails to get unsubscribe links
-                for sender in senders:
+                for sequence, sender in selected_senders.items():
                     safe_print(f"\n    {BLUE}Processing sender: {sender}{RESET}")
                     # Fetch recent emails from this sender to find unsubscribe links
                     query = f"from:{sender} category:promotions"
@@ -186,25 +190,23 @@ def main():
         elif choice == "2":  # Only Delete
             clear_screen()
             safe_print("\n    {BLUE}=== DELETE EMAILS ONLY ==={RESET}\n")
-            selected_emails = get_senders_to_process(service)
-            if selected_emails:
-                for email in selected_emails:
-                    sender = email['sender_email']
+            selected_senders = get_senders_to_process(service)
+            if selected_senders:
+                for sequence, sender in selected_senders.items():
                     run_with_loading(f"Deleting emails from {sender}", 
                                    lambda s=sender: delete_emails_from_sender(service, s, dry_run=app_config['DRY_RUN']))
             
         elif choice == "3":  # Both Unsubscribe and Delete
             clear_screen()
             safe_print("\n    {BLUE}=== UNSUBSCRIBE AND DELETE ==={RESET}\n")
-            selected_emails = get_senders_to_process(service)
-            if selected_emails:
-                senders = [email['sender_email'] for email in selected_emails]
+            selected_senders = get_senders_to_process(service)
+            if selected_senders:
+                senders = list(selected_senders.values())
                 if run_with_loading("Processing unsubscribe requests", 
                                   lambda: process_unsubscribe_links([], senders, dry_run=app_config['DRY_RUN'])):
-                    for email in selected_emails:
-                        sender = email['sender_email']
+                    for sequence, sender in selected_senders.items():
                         run_with_loading(f"Deleting emails from {sender}", 
-                                       lambda s=sender: delete_emails_from_sender(service, sender, dry_run=app_config['DRY_RUN']))
+                                       lambda s=sender: delete_emails_from_sender(service, s, dry_run=app_config['DRY_RUN']))
             
         elif choice == "4":  # Help
             clear_screen()
@@ -212,16 +214,16 @@ def main():
             continue
             
         elif choice == "5":  # Quit
-            safe_print("\n    {BLUE}Thank you for using Gmail Unsubscriber & Cleaner. Goodbye! \ud83d\udc4b{RESET}\n")
+            safe_print(f"\n\n    {BLUE}Thank you for using Gmail Unsubscriber & Cleaner. Goodbye! \ud83d\udc4b{RESET}\n")
             sys.exit(0)
         
         # Pause before returning to menu
-        safe_print("\n    {GRAY}Press Enter to return to the main menu...{RESET}", end="")
+        safe_print(f"\n    {GRAY}Press Enter to return to the main menu...{RESET}", end="")
         input()
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        safe_print("\n\n    {BLUE}Operation cancelled by user. Exiting...{RESET}\n")
+        safe_print(f"\n\n    {BLUE}Operation cancelled by user. Exiting...{RESET}\n")
         sys.exit(0)

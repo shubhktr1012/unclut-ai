@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from typing import Dict, Any
+import logging
 
 def load_config() -> Dict[str, Any]:
     """Load configuration from .env file and environment variables."""
@@ -26,6 +27,7 @@ def load_config() -> Dict[str, Any]:
                 try:
                     config[key] = int(value)
                 except (ValueError, TypeError):
+                    logging.warning(f"Invalid value for {key}: {value}. Using default value.")
                     pass  # Keep default if conversion fails
     
     return config

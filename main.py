@@ -12,7 +12,7 @@ def main():
     This is now just a wrapper that imports and runs the CLI menu.
     """
     try:
-        from cli_menu import main as cli_main
+        from cli_menu import cli_main
         cli_main()
     except ImportError as e:
         print(f"Error: Failed to import required modules. {e}")

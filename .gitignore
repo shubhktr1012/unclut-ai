@@ -5,6 +5,7 @@ token.pickle
 
 # Environment Variables
 .env
+!.env.example
 
 # Python
 __pycache__/
