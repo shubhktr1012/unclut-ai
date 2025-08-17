@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import re
 from googleapiclient.discovery import Resource
 from termcolor import colored
@@ -335,46 +335,43 @@ def delete_emails_from_sender(service, sender_email: str, max_messages: int = 10
         Dictionary with results including count of messages to be deleted and any errors
     """
     try:
-        # Get all message IDs from the sender
-        message_ids = get_message_ids_for_sender(service, sender_email, max_results=max_messages)
-        
-        if not message_ids:
-            return {
-                'success': True,
-                'message': f'No messages found from {sender_email}',
-                'deleted_count': 0,
-                'dry_run': dry_run,
-                'errors': []
-            }
+        message_ids = get_message_ids_for_sender(service, sender_email, max_messages)
+        total_messages = len(message_ids)
         
         if dry_run:
             return {
                 'success': True,
-                'message': f'[DRY RUN] Would delete {len(message_ids)} messages from {sender_email}',
-                'deleted_count': len(message_ids),
-                'dry_run': True,
-                'errors': []
+                'deleted_count': total_messages,
+                'errors': [],
+                'sender': sender_email,
+                'message': f'Would delete {total_messages} messages from {sender_email} (dry run)'
+            }
+        
+        if not message_ids:
+            return {
+                'success': True,
+                'deleted_count': 0,
+                'errors': [],
+                'sender': sender_email,
+                'message': f'No messages found from {sender_email}'
             }
         
         # Delete messages in batches
         deleted_count, errors = delete_messages_batch(service, message_ids)
         
-        result = {
+        return {
             'success': len(errors) == 0,
-            'message': f'Successfully deleted {deleted_count} messages from {sender_email}' if len(errors) == 0 
-                      else f'Deleted {deleted_count} messages from {sender_email} with {len(errors)} errors',
             'deleted_count': deleted_count,
-            'dry_run': False,
-            'errors': errors
+            'errors': errors,
+            'sender': sender_email,
+            'message': f'Deleted {deleted_count} messages from {sender_email}'
         }
-        
-        return result
         
     except Exception as e:
         return {
             'success': False,
-            'message': f'Error deleting messages from {sender_email}: {str(e)}',
             'deleted_count': 0,
-            'dry_run': dry_run,
-            'errors': [str(e)]
+            'error': str(e),
+            'sender': sender_email,
+            'message': f'Error deleting messages from {sender_email}: {str(e)}'
         }

@@ -1,13 +1,13 @@
 import sys
-import time
 import logging
 import webbrowser
-from typing import Callable, Optional, List, Dict, Any
+from typing import Callable, List, Dict, Any, Tuple, Optional
 from unsub_process import process_unsubscribe_links
 from email_fetcher import delete_emails_from_sender, fetch_promotional_emails, preview_emails_with_sequence
 from unsubscribe_list import extract_unsubscribe_links
 from setup_gmail_service import create_service
 from config import config as app_config
+from db import record_activity
 
 USER_ID = app_config['USER_ID']
 
@@ -87,7 +87,7 @@ def show_help():
     safe_print(help_text)
     input("\n    Press Enter to return to the main menu...")
 
-def run_with_loading(message: str, func: Callable, *args, **kwargs) -> Optional[bool]:
+def run_with_loading(message: str, func: Callable, *args, **kwargs) -> bool | None:
     """
     Run a function with a loading indicator.
     
@@ -150,13 +150,32 @@ def get_senders_to_process(service) -> Dict[int, str]:
 
 def cli_main():
     """Main function to run the CLI menu."""
+    clear_screen()
+    display_banner()
+    
     # Initialize Gmail service
     try:
         service = create_service()
+        if not service:
+            safe_print(f"{RED}Failed to create Gmail service. Please check your credentials.{RESET}")
+            return
     except Exception as e:
-        safe_print(f"\n    {RED}Failed to initialize Gmail service: {str(e)}{RESET}")
-        safe_print("    Please check your credentials and try again.")
+        safe_print(f"{RED}Error initializing Gmail service: {str(e)}{RESET}")
         sys.exit(1)
+
+    safe_print(f"\n    {GRAY}Attempting to fetch user profile...{RESET}")
+    try:
+        profile = service.users().getProfile(userId=USER_ID).execute()
+        current_user_email = profile.get('emailAddress')
+        if current_user_email:
+            safe_print(f"\n    {GREEN}Logged in as: {current_user_email}{RESET}")
+        else:
+            safe_print(f"\n    {RED}Could not retrieve user email. Database logging will be disabled.{RESET}")
+            current_user_email = None
+    except Exception as e:
+        safe_print(f"\n    {RED}Error fetching user profile: {e}{RESET}")
+        safe_print(f"    {YELLOW}Database logging will be disabled for this session.{RESET}")
+        current_user_email = None
     
     while True:
         clear_screen()
@@ -214,7 +233,8 @@ def cli_main():
                                 result = process_unsubscribe_links(
                                     unsub_links=[link],
                                     selected_senders=[sender],
-                                    dry_run=app_config['DRY_RUN']
+                                    dry_run=app_config['DRY_RUN'],
+
                                 )
                                 
                                 # Check if there was an error in processing
@@ -229,6 +249,8 @@ def cli_main():
                                 
                                 if status == 'success':
                                     safe_print(f"    {GREEN}✓ Successfully processed unsubscribe request: {message}{RESET}")
+                                    if current_user_email:
+                                        record_activity(current_user_email, unsub_delta=1)
                                 elif status == 'dry_run':
                                     safe_print(f"    {YELLOW}⚠ Dry run: {message}{RESET}")
                                 else:
@@ -246,9 +268,18 @@ def cli_main():
             selected_senders = get_senders_to_process(service)
             if selected_senders:
                 for sequence, sender in selected_senders.items():
-                    run_with_loading(f"Deleting emails from {sender}", 
-                                   lambda s=sender: delete_emails_from_sender(service, s, dry_run=app_config['DRY_RUN']))
-            
+                    res = run_with_loading(
+                        f"Deleting emails from {sender}", 
+                        lambda s=sender: delete_emails_from_sender(
+                        service, 
+                        s, 
+                        dry_run=app_config['DRY_RUN'],
+   
+                        )
+                    )
+                    if isinstance(res, dict) and current_user_email:
+                        record_activity(current_user_email, deleted_delta=res.get('deleted_count', 0))
+             
         elif choice == "3":  # Both Unsubscribe and Delete
             clear_screen()
             safe_print("\n    {BLUE}=== UNSUBSCRIBE AND DELETE ==={RESET}\n")
@@ -301,12 +332,20 @@ def cli_main():
                 
                 # Process unsubscribe links if we found any
                 if senders and all_links and len(senders) == len(all_links):
-                    if run_with_loading("Processing unsubscribe requests", 
-                                      lambda: process_unsubscribe_links(all_links, senders, dry_run=app_config['DRY_RUN'])):
-                        # After successful unsubscribe, delete the emails
+                    res = run_with_loading("Processing unsubscribe requests", 
+                                      lambda: process_unsubscribe_links(all_links, senders, dry_run=app_config['DRY_RUN']))
+                    if isinstance(res, dict) and 'results' in res and current_user_email:
+                        success_count = sum(1 for r in res['results'].values() if r.get('status') == 'success')
+                        if success_count:
+                            record_activity(current_user_email, unsub_delta=success_count)
+                    
+                    # After successful unsubscribe, delete the emails
+                    if res:
                         for sender in senders:
-                            run_with_loading(f"Deleting emails from {sender}", 
+                            del_res = run_with_loading(f"Deleting emails from {sender}", 
                                          lambda s=sender: delete_emails_from_sender(service, s, dry_run=app_config['DRY_RUN']))
+                            if isinstance(del_res, dict) and current_user_email:
+                                record_activity(current_user_email, deleted_delta=int(del_res.get('deleted_count', 0)))
                 else:
                     safe_print(f"\n    {YELLOW}No unsubscribe links found for selected senders.{RESET}")
                     if senders:
@@ -332,5 +371,8 @@ if __name__ == "__main__":
     try:
         cli_main()
     except KeyboardInterrupt:
-        safe_print(f"\n\n    {BLUE}Operation cancelled by user. Exiting...{RESET}\n")
+        print("\nOperation cancelled by user.")
         sys.exit(0)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)

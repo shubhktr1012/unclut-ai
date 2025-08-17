@@ -1,0 +1,15 @@
+{
+  "name": "unclut-cli",
+  "version": "1.0.0",
+  "description": "Gmail Smart Unsubscriber CLI Tool",
+  "main": "main.py",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "python main.py"
+  },
+  "keywords": ["gmail", "unsubscribe", "email", "cli"],
+  "author": "",
+  "license": "ISC"
+}

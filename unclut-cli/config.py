@@ -1,7 +1,12 @@
+import json
 import os
-from dotenv import load_dotenv
+from pathlib import Path
 from typing import Dict, Any
-import logging
+from dotenv import load_dotenv
+
+# Define config path
+CONFIG_DIR = os.path.expanduser('~/.unclut')
+CONFIG_PATH = os.path.join(CONFIG_DIR, 'config.json')
 
 def load_config() -> Dict[str, Any]:
     """Load configuration from .env file and environment variables."""
@@ -13,7 +18,7 @@ def load_config() -> Dict[str, Any]:
         'MAX_SENDERS': 50,
         'MAX_EMAILS_TO_SCAN': 100,
         'DRY_RUN': False,
-        'USER_ID': 'me',
+        'USER_ID': 'me',  # 'me' is a special value for the authenticated user in Gmail API
     }
     
     # Update with environment variables if they exist
@@ -27,10 +32,10 @@ def load_config() -> Dict[str, Any]:
                 try:
                     config[key] = int(value)
                 except (ValueError, TypeError):
-                    logging.warning(f"Invalid value for {key}: {value}. Using default value.")
-                    pass  # Keep default if conversion fails
+                    # Keep default if conversion fails
+                    pass  
     
     return config
 
-# Load config when module is imported
+# Initialize config
 config = load_config()

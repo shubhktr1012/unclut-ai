@@ -8,13 +8,14 @@ from bs4 import BeautifulSoup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def extract_unsubscribe_links(service_or_email_data, user_id='me', max_results=20):
+from config import config as app_config
+
+def extract_unsubscribe_links(service_or_email_data, max_results=20):
     """
     Extract unsubscribe links from Gmail messages with improved HTML parsing.
 
     Args:
         service_or_email_data: Either an authorized Gmail API service instance or a single email message data dict
-        user_id: Gmail user ID, usually "me" (only used if service is provided)
         max_results: How many messages to scan (only used if service is provided)
 
     Returns:
@@ -27,7 +28,7 @@ def extract_unsubscribe_links(service_or_email_data, user_id='me', max_results=2
         if hasattr(service_or_email_data, 'users'):
             logger.info(f"Fetching up to {max_results} messages...")
             results = service_or_email_data.users().messages().list(
-                userId=user_id, 
+                userId=app_config['USER_ID'], 
                 labelIds=['INBOX'], 
                 maxResults=max_results
             ).execute()
@@ -35,7 +36,7 @@ def extract_unsubscribe_links(service_or_email_data, user_id='me', max_results=2
             for msg in results.get('messages', [])[:max_results]:  # Limit to max_results
                 try:
                     msg_data = service_or_email_data.users().messages().get(
-                        userId=user_id, 
+                        userId=app_config['USER_ID'], 
                         id=msg['id'], 
                         format='full'
                     ).execute()

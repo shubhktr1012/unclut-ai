@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "unclut.ai - Gmail Smart Inbox Cleaner",
+  "version": "1.0.0",
+  "description": "Smartly unsubscribe and clean your Gmail inbox with AI-powered suggestions.",
+  "permissions": [
+    "identity",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://www.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [{
+    "resources": ["*.js", "*.css", "*.html", "icons/*"],
+    "matches": ["https://mail.google.com/*"]
+  }],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["contentScript.js"],
+      "css": ["ui.css"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "unclut.ai - Gmail Cleaner"
+  },
+  "oauth2": {
+    "client_id": "655826145261-30o7ip5ec8kfi116f951lh1ubkv9fb9d.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/gmail.readonly"
+    ]
+  }
+}

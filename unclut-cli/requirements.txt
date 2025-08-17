@@ -1,6 +1,13 @@
+# Required by Google API Client Library for Python
 google-api-python-client>=2.0.0
+# Required by Google API Client Library for Python
 google-auth-httplib2>=0.1.0
+# Required by Google API Client Library for Python
 google-auth-oauthlib>=0.5.0
+# Required by extract_unsubscribe.py for HTML parsing
 beautifulsoup4>=4.9.3
+# Required by unsub_process.py for web scraping
 requests>=2.25.1
+# Required by config.py for loading environment variables from .env file
 python-dotenv>=0.19.0
+pymongo>=4.14.0

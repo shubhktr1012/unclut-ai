@@ -1,10 +1,18 @@
-import re
-from bs4 import BeautifulSoup
-from typing import List, Dict, Tuple, Set, Optional
+# Add this at the very top of the file
+from __future__ import annotations
+
+# Then standard library imports
 import logging
-from datetime import datetime
-import requests
+import re
+from typing import List, Dict, Tuple, Set, Any, Union, Callable
 from urllib.parse import urlparse, parse_qs, urlencode, urljoin
+
+# Third-party imports
+import requests
+from bs4 import BeautifulSoup
+
+# Local application imports
+# Supabase integration removed
 
 # Configure logging
 logging.basicConfig(
@@ -273,7 +281,8 @@ def submit_unsubscribe_form(html_content: str, base_url: str, timeout: int) -> b
         
     return False
 
-def process_unsubscribe_links(unsub_links: List[str], selected_senders: List[str], dry_run: bool = True) -> Dict[str, Dict]:
+def process_unsubscribe_links(unsub_links: List[str], selected_senders: List[str], 
+                            dry_run: bool = True) -> Dict[str, Any]:
     """
     Process unsubscribe links for selected senders.
     
@@ -285,98 +294,101 @@ def process_unsubscribe_links(unsub_links: List[str], selected_senders: List[str
     Returns:
         Dictionary with results for each sender and their unsubscribe attempts
     """
-    results = {}
-    processed_links = set()  # Track processed links to avoid duplicates
-    
-    # Validate inputs
-    if not unsub_links or not selected_senders:
-        error_msg = "No unsubscribe links or senders provided"
-        logging.error(error_msg)
-        return {'error': error_msg}
-        
-    if len(unsub_links) != len(selected_senders):
-        error_msg = f"Mismatch between number of links ({len(unsub_links)}) and senders ({len(selected_senders)})"
-        logging.error(error_msg)
-        return {'error': error_msg}
-    
     try:
+        if len(unsub_links) != len(selected_senders):
+            error_msg = "Mismatch between number of unsubscribe links and senders"
+            logging.error(error_msg)
+            return {
+                'error': error_msg,
+                'results': {}
+            }
+        
+        results = {}
+        
         for link, sender in zip(unsub_links, selected_senders):
-            # Skip if link is None, empty, or whitespace
-            if not link or not str(link).strip():
-                msg = f"Skipping empty/invalid link for sender: {sender}"
-                logging.warning(msg)
+            if sender not in results:
                 results[sender] = {
-                    'status': 'skipped',
-                    'link': '',
-                    'message': msg,
-                    'timestamp': datetime.now().isoformat()
+                    'status': 'pending',
+                    'message': 'Processing not started',
+                    'attempts': [],
+                    'success': False,
+                    'dry_run': dry_run
                 }
-                continue
-                
-            # Clean and normalize the link
-            link = str(link).strip()
-            
-            # Skip duplicate links for the same sender
-            if (sender, link) in processed_links:
-                info_msg = f"Skipping duplicate link for {sender}"
-                logging.info(info_msg)
-                results[f"{sender} (duplicate)"] = {
-                    'status': 'skipped',
-                    'link': link,
-                    'message': info_msg,
-                    'timestamp': datetime.now().isoformat()
-                }
-                continue
-                
-            # Mark this link as processed
-            processed_links.add((sender, link))
             
             if dry_run:
-                logging.info(f"[DRY-RUN] Would attempt to unsubscribe from {sender} using: {link}")
-                results[sender] = {
+                result = {
                     'status': 'dry_run',
-                    'link': link,
-                    'message': 'Dry run - no action taken',
-                    'timestamp': datetime.now().isoformat()
+                    'message': f'Would attempt to unsubscribe from {sender} using {link}',
+                    'attempts': [{
+                        'link': link,
+                        'status': 'dry_run',
+                        'message': 'Dry run - no action taken'
+                    }],
+                    'dry_run': True
                 }
-            else:
-                logging.info(f"Processing unsubscribe for {sender}...")
-                try:
-                    success, message = unsubscribe_from_link(link)
-                    status = 'success' if success else 'failed'
-                    logging.info(f"Unsubscribe for {sender}: {status} - {message}")
-                    results[sender] = {
-                        'status': status,
-                        'link': link,
-                        'message': message,
-                        'timestamp': datetime.now().isoformat()
+                results[sender].update(result)
+                logging.info(f"[DRY RUN] Would attempt to unsubscribe from {sender} using {link}")
+                continue  # Skip the rest of the loop for dry run
+            
+            # Process actual unsubscribe attempt
+            try:
+                logging.info(f"Attempting to unsubscribe from {sender} using {link}")
+                success, message = unsubscribe_from_link(link)
+                
+                attempt = {
+                    'link': link,
+                    'status': 'success' if success else 'failed',
+                    'message': message
+                }
+                
+                if sender not in results:
+                    results[sender] = {'attempts': []}
+                    
+                results[sender]['attempts'].append(attempt)
+                
+                if success:
+                    result = {
+                        'status': 'success',
+                        'message': f'Successfully unsubscribed from {sender}',
+                        'success': True
                     }
-                except Exception as e:
-                    error_msg = f"Error processing unsubscribe for {sender}: {str(e)}"
-                    logging.error(error_msg)
-                    results[sender] = {
-                        'status': 'error',
-                        'link': link,
-                        'message': error_msg,
-                        'timestamp': datetime.now().isoformat()
+                    results[sender].update(result)
+                    logging.info(f"Successfully unsubscribed from {sender}")
+                else:
+                    result = {
+                        'status': 'partial_failure',
+                        'message': f'Failed to unsubscribe from {sender}: {message}'
                     }
+                    results[sender].update(result)
+                    logging.warning(f"Failed to unsubscribe from {sender}: {message}")
+                
+            except Exception as e:
+                error_msg = f"Error unsubscribing from {sender}: {str(e)}"
+                logging.error(error_msg, exc_info=True)
+                
+                if sender not in results:
+                    results[sender] = {'attempts': []}
+                    
+                results[sender].update({
+                    'status': 'error',
+                    'message': error_msg
+                })
+    
     except Exception as e:
         error_msg = f"Unexpected error in process_unsubscribe_links: {str(e)}"
-        logging.error(error_msg)
-        return {'error': error_msg}
+        logging.error(error_msg, exc_info=True)
+        return {'error': error_msg, 'results': results}
     
     # Log completion summary
     processed_count = len(results)
-    skipped_count = sum(1 for r in results.values() if r.get('status') == 'skipped')
     success_count = sum(1 for r in results.values() if r.get('status') == 'success')
-    failed_count = sum(1 for r in results.values() if r.get('status') in ['failed', 'error'])
+    failed_count = sum(1 for r in results.values() if r.get('status') in ['failed', 'error', 'partial_failure'])
     
     logging.info("\n" + "="*50)
     logging.info("UNSUBSCRIBE PROCESSING SUMMARY")
     logging.info("="*50)
     logging.info(f"Total processed: {processed_count}")
     logging.info(f"Successfully unsubscribed: {success_count}")
-    logging.info(f"Skipped: {skipped_count}")
     logging.info(f"Failed/Errors: {failed_count}")
     
     if dry_run:
@@ -384,11 +396,11 @@ def process_unsubscribe_links(unsub_links: List[str], selected_senders: List[str
     
     # Log detailed results at debug level
     logging.debug("\nDetailed results:" + "\n" + "\n".join(
-        f"{sender}: {result['status']} - {result.get('message', 'No message')}" 
+        f"{sender}: {result.get('status', 'unknown')} - {result.get('message', 'No message')}" 
         for sender, result in results.items()
     ))
     
-    return results  # Make sure to return the results
+    return {'results': results}
 
 # Alias for backward compatibility
 test_unsubscribe_actions = process_unsubscribe_links
